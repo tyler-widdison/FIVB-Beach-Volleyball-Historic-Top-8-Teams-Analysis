@@ -27,6 +27,11 @@ Originally I was going to use @BigTimeStats [dataset](https://github.com/BigTime
 |Report.pdf|Report about findings|
 |DS_Report.pdf|Report about code|
 
+### Tools
+- R for data science means
+- Python for web scrapping
+- Excel/Google sheets for manual doctor edits
+
 ## Author
 Tyler Widdison
 
