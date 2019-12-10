@@ -3,7 +3,7 @@
 
 
 ![Image of Yaktocat](https://www.sportface.it/wp-content/uploads/2018/05/FIVB-Beach-Volley-World-Tour-Logo.jpg)
-
+## Project Description
 This is a repositiory for my final project in my UCLA Extension class, Introduction to Data Science.
 For this project I web scrapped the FIVB Beach Volleyball schedule/results and rankings from 2001 - 2019. To gain additional data wrangling, EDA and visualization skills. Building a database of historical performances that can be used efficently.
 
@@ -18,10 +18,17 @@ Originally I was going to use @BigTimeStats [dataset](https://github.com/BigTime
 |-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|
 |35|2016-08-25|16:00|2|2-1 (23-21, 19-21, 15-7)|0:45:00|wlob2016|2016|Pool B|larissa/talita|bra|van der vlist/van gestel|ned|bra|3|larissa|talita|25|van der vlist|van gestel|w|2|1|23|21|10|21|15|7|43.03|
 
+ ## Contents
  
+|File|Description|
+|-|-|
+|finishes_main.csv|CSV file from webscrape of rankings|
+|fivb_2001_to_2019_early_nov_results.csv|CSV file from webscrape of scheudle/results|
+|Report.pdf|Report about findings|
+|DS_Report.pdf|Report about code|
 
-
-
+## Author
+Tyler Widdison
 
 
 
