@@ -5,7 +5,7 @@
 ![Image of Yaktocat](https://www.sportface.it/wp-content/uploads/2018/05/FIVB-Beach-Volley-World-Tour-Logo.jpg)
 ## Project Description
 This is a repositiory for my final project in my UCLA Extension class, Introduction to Data Science.
-For this project I web scrapped the FIVB Beach Volleyball schedule/results and rankings from 2001 - 2019. To gain additional data wrangling, EDA and visualization skills. Building a database of historical performances that can be used efficently.
+For this project I web scrapped the FIVB Beach Volleyball schedule/results and rankings from 2001 - 2019. To gain additional data wrangling, EDA and visualization skills and build a database of historical performances that can be used for future research.
 
 ## Source of the Data Set
 The schedule data was web scrapped from 753 web pages from [old fivb](http://www.fivb.org/EN/BeachVolleyball/Competitions/Competitions.htm), [new fivb](https://www.fivb.org/EN/BeachVolleyball/calendar.asp) and [fivb vis](https://www.fivb.org/visasp/JS_BMatchList.aspx?TournCode=&Phase=2) public pages.
