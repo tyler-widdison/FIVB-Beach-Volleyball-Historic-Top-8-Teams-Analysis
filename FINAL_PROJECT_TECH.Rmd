@@ -1,0 +1,559 @@
+---
+title: 'FIVB Beach Volleyball Historic Top 8 Teams Analysis'
+author: 'Tyler Widdison'
+date: 'Dec 2019'
+output:
+  html_document:
+    number_sections: true
+    toc: true
+    fig_width: 7
+    fig_height: 4.5
+    theme: readable
+    highlight: tango
+    indent: true
+---
+
+```{r, include=FALSE}
+library(tidyverse)
+library(gridExtra)
+library(tidyr)
+library(ggthemes)
+library(modelr)
+library(viridis)
+library(dplyr)
+library(knitr)
+library(kableExtra)
+library(ggplot2)
+library(tidyquant)
+library(gridExtra)
+library(grid)
+library(lubridate)
+library(sm)
+library(GGally)
+library(stringr)
+library(binhf)
+library(reshape2)
+library(dataMeta)
+dfs <- read.csv('C:/Users/Tyler.Widdison/Documents/all_the_things.csv', header = TRUE, as.is=TRUE,  encoding="UTF-8")
+names(dfs)[1] <- 'match_no' #changing the column 1 name
+dfs<-dfs[!(dfs$tourn == 'wgoo2001'),] #this tournament is in there under the name 'wbri2001' so I am deleting all of the 'wgoo2001' occurances
+dfs$match_no <- suppressWarnings(as.numeric(dfs$match_no)) #needs to be a numeric
+dfs$date <- suppressWarnings(as.Date(dfs$date)) #needs to be a date
+dfs$court <- suppressWarnings(as.numeric(dfs$court)) #change to numeric 
+dfs$result <- NULL #getting rid of result. Score is later down the line
+dfs$team_rank <- as.numeric(dfs$team_rank) #needs to be a numeric
+dfs$opp_team_rank <- as.numeric(dfs$opp_team_rank) #needs to be a numeric
+dfs$duration<-suppressWarnings(as.duration(hms(dfs$duration))) #putting duration into a useable format using lubridate
+dfs$duration<-suppressWarnings(as.vector(dfs$duration)) #making the class an integer
+dfs$opp_game_three[is.na(dfs$opp_game_three)] <- 0 #ignoring NAs in game three
+dfs$team_game_three[is.na(dfs$team_game_three)] <- 0 #...
+dfs$tourn_rank[is.na(dfs$tourn_rank)] <- 239 #This NA is only one tournament. I gave it a score of 239 based off teams rankings. 
+dfs$score_diff_game_one <-(dfs$team_game_one - dfs$opp_game_one)#score difference for all sets
+dfs$score_diff_game_two <-(dfs$team_game_two - dfs$opp_game_two)
+dfs$score_diff_game_three <-(dfs$team_game_three - dfs$opp_game_three)
+dfs$team_final_score <- (dfs$team_game_one + dfs$team_game_two + dfs$team_game_three) #number of total points scored
+dfs$opp_team_final_score <- (dfs$opp_game_one + dfs$opp_game_two + dfs$opp_game_three) #number of total opponent points scored
+dfs$team <- str_replace(dfs$team, 'humana-paredes/pavan', 'humana/paredes-pavan') #needing some name changes so things match up properly
+dfs$team <- str_replace(dfs$team, 'melissa/pavan', 'humana/paredes-pavan')
+dfs$team <- str_replace(dfs$team, 'michon/szczytowicz-kolosinska', 'kolosinska/michon-szczytowicz')
+dfs$time <- str_replace(dfs$time, '01:00', '13:00')  #some of the times need adjusting (i checked schedule to make sure this is the case)
+dfs$time <- str_replace(dfs$time, '02:00', '14:00')  
+dfs$time <- str_replace(dfs$time, '04:00', '16:00')  
+dfs$time <- str_replace(dfs$time, '04:57', '16:57')  
+
+#melting the data so I can get both players in a unique setting. Players, at times, will play with different partners throughout one year. Looking at one team wouldn't work for the way I wanted this
+df <- melt(dfs, id.vars=c('match_no', 'date', 'time', 'court', 'duration', 'tourn', 'year', 'phase', 'tourn_rank', 'winning_team', 'losing_team', 'gender', 'team', 
+                          'team_country', 'team_rank', 'team_match_score', 'team_game_one', 'team_game_two', 'team_game_three', 'opp', 'opp_country', 'opp_match_score', 
+                          'opp_game_one', 'opp_game_two', 'opp_game_three', 'opp_team_rank', 'matches_played', 'team_match_won', 'opp_match_won', 'opp_player_1', 
+                          'opp_player_2', 'score_diff_game_one', 'score_diff_game_two', 'score_diff_game_three', 'team_final_score', 'opp_team_final_score'))
+colnames(df)[which(names(df) == "value")] <- "player" #column changing the melt
+df$player <- str_replace(df$player, 'thole j.', 'thole, j.') #more name changes are needing to happen due to data quality needing to be updated
+df$player <- str_replace(df$player, 'ces a.', 'cès')
+df$player <- str_replace(df$player, 'mol, a.', 'mol a.')
+
+df$team_rank[df$team_rank == 0] <- 150 #Due to time, I only ensured teams 1-50 had a correct ranking. I am giving all other teams with 0 a 150 ranking. 
+df$opp_team_rank[df$opp_team_rank == 0] <- 150
+df<-df[!is.na(df$team_game_one),] #there are matches with injurys. this throws errors. So I am taking out those injury matches
+df$game_three_amount<-lapply(df$team_game_three, function(x){ length(which(x!=0))/length(x)}) #counting the number of set 3s played
+df$game_three_amount<-suppressWarnings(as.numeric(df$game_three_amount)) #setting the class as numeric
+
+df$phase2 <- ifelse(grepl("Country", df$phase), 'CQ', #phase of the match is not consistent. For example 'Country Quota BRA' ect ect. I want all Country Quota matches played to say CQ
+                    ifelse(grepl("Federation", df$phase), 'CQ',
+                           ifelse(grepl("Semi", df$phase), 'Semifinals',
+                                  ifelse(grepl("Play-Off", df$phase), 'Playoff',
+                                         ifelse(grepl("Gold Medal Match", df$phase), 'Playoff',
+                                                ifelse(grepl("Finals", df$phase), 'Final 1st Place',
+                                                  ifelse(grepl("Bronze", df$phase), 'Final 1st Place',NA)))))))
+
+df$phase2 <- ifelse(is.na(df$phase2), df$phase, df$phase2) #grouping the phases together so I can get one phase
+df$phase <- NULL #I don't want to confuse myself. Nulling out the first phase. 
+df<-df %>% rename(phase = phase2)
+df$hour <- substring(df$time, 0, 2) #I only want to see hour of each day. Not the Minutes
+df$hour<-suppressWarnings(as.integer(df$hour))
+
+all_player_df <- df %>% 
+  dplyr::group_by(player, hour, team, team_country, tourn_rank, tourn, date, phase, year, match_no, court, time, team_rank, gender, opp, opp_team_rank) %>% 
+  dplyr::summarise(total_matches = sum(matches_played),
+                   match_won = sum(team_match_won),
+                   match_lost = sum(matches_played - team_match_won),
+                   match_win = match_won / (match_won + match_lost),
+                   total_set_threes = sum(game_three_amount),
+                   total_sets_played = (total_matches + total_matches + total_set_threes),
+                   rank = sum(team_rank))
+
+all_player_df$total_matches<-suppressWarnings(as.character(all_player_df$total_matches))
+
+all_player_df$total_matches <- str_replace(all_player_df$total_matches, '2', '1')
+
+all_player_df$total_matches <- suppressWarnings(as.integer(all_player_df$total_matches))
+
+df_men <- all_player_df %>%
+  dplyr::filter(gender == 'm' & team_rank <= 8)
+
+df_women <- all_player_df %>%
+  dplyr::filter(gender == 'w' & team_rank <= 8)
+
+```
+# Project description
+   *Evaluation of winning trends related to court and hour for the top 8 FIVB Beach volleyball teams per gender since 2001. The concluding hypothesis is that teams ranked within the top 8 have a higher probability at winning on court 1 at 09:00. Generalized linear model is used in support of the hypothesis. Notes: __^Court records are not kept by FIVB until 2009. ^^Hour records are not kept by FIVB until 2004__. This project has given me the skills necessary to add new insight to other projects I work on in the future.*
+
+
+## Source of data set
+   This data set was webscrapped from 2 sources. First from FIVB Beach competiton database. http://www.fivb.org/EN/BeachVolleyball/Competitions/Competitions.htm
+Second, FIVB Beach rankings from http://www.fivb.org/Vis/Public/JS/Beach/SeasonRank.aspx?Gender=1&id=BTechPlayW&Date=20191001. 
+Numerous more links were accessed between these two links. But ultimatly I was able to access the data I was looking for. I will provide the final CSV I used for this project. I did end up doing a lot more work to get this final csv than I originally planned.
+
+__^Note: The team variable is already melted. One match is listed twice. For example if it was USA vs GER, I have the 'team' be 'USA' and the opp team be 'GER', the next time this match appears the team is 'GER' and the opp is 'USA'. I did this so I can look at specific teams results. I wouldn't be able to get a true reading on how many matches 1 team played if I had kept it seperated. I call this 'The focus team.'__
+
+
+## Data dictionary
+Variable Name | Description
+--------------|-------------
+*no*      | Match number of specific tournament
+*date*        | Date of match
+*time*          | Time of match
+*court*          | Court match is played on
+*result*     | Result of the played match
+*duration*        | Duration of the played match
+*tourn*          | Tournament name
+*year*      | Year of tournament
+*phase*           | Phase of tournament the match was played
+*winning_team*  | Winning team of the match
+*losing_team*  | Losing team of the match
+*gender*    | Gender of teams 
+*team*    | The focus team
+*team_country*  | The focus team country
+*team_rank*  | The rank of the focus teams at the end of that played year
+*opp*  | The focus teams opponent
+*opp_country*  | The focus teams opponent country
+*matches_played*  | This is always listed as '1'. Each row is one match. I wanted to be able to sum the total of matches played for my hypothesis
+*team_match_won*  | If the focus team had won the match this will be a '1' otherwise it is a '0'
+*opp_match_won*  | If the opponent team had won the match this will be a '1' otherwise it is a '0'
+*team_player_1*  | First listed player in the played match for the focus team
+*team_player_2*  | Second listed player in the played match for the focus team
+*opp_player_1*  | First listed player in the played match for the opp team
+*opp_player_2*  | Second listed player in the played match for the opp team
+
+
+   Each variable was considered and ultimatley I decided to do my hypothesis on my level. The main variables used were: date, court, year, gender, team, team_rank, matches_played, team_match_won, team_player_1 and team_player_2.
+
+# Preparation of Data
+   There was a lot of data munging I had to do in order to get to my final hypothesis. I had to change classes, column names, get rid of columns, replace strings, melt the players variable and get the hour of the time. This is a few things I did. There was more munging I originally did before I came to my final hypothesis. 
+  
+## FIVB data
+   I webscrapped all the data from the FIVB websites. With the amount of links (about 750) one can guess there was errors I found. I had to nix all the matches that ended in a 'injury' result. Player names were different across multiple tournaments, time of day was bad in some cases. For example: 01:00, 02:00, 04:00, 04:57 were all times I had to make correct. There were a couple of matches which still had the live score on the result. For example: LIVE (21-12, 13-15). It shouldn't have that 'LIVE' potion on the result. 
+  
+## Ranking of teams data
+   I webscrapped the rankings on Oct 1 of each year. After consulting with a friend we decided Oct 1 would be the final rank for that played year. Jan - Oct. The naming convention between the rankings and the FIVB schedule were different. So I had to spend some time doctoring in Excel in order to get the names, and rankings, of the player in the top 8 correct for each year. Also there were special charecters that caused some issues that I dealt with in this way:
+```{r}
+unescape_html <- function(str){
+  xml2::xml_text(xml2::read_html(paste0("<x>", str, "</x>")))
+}
+```
+  
+## Final web scrapped data summary
+   ```{r}
+   summary(df)
+   ```
+
+# Exploring the data
+I ended up spedning a lot of time on places I didn't want to spend. Trying to figure out how I could use 'score_difference' and how likely a team was to win the match as a varaible for a hypothesis. 
+
+## Places explored
+
+- Players density charts 
+
+```{r, echo = FALSE, error=TRUE}
+#how does point difference coorelate with winning for top 8 MENS teams?####
+pd<-df %>%
+  dplyr::group_by(player, team_country, year) %>%
+  dplyr::filter(gender == 'm', team_rank <= 8) %>%
+  dplyr::summarise(match_won = sum(team_match_won),
+                   total_matches = sum(matches_played),
+                   total_set_threes = sum(game_three_amount),
+                   total_sets_played = (total_matches + total_matches + total_set_threes),
+                   match_lost = sum(matches_played - team_match_won),
+                   avg_rank = mean(team_rank),
+                   avg_match_time = mean(duration/60),
+                   match_win = match_won / (match_won + match_lost),
+                   game_3s = sum(game_three_amount),
+                   avg_tourn_rank = mean(tourn_rank),
+                   total_matches = sum(matches_played),
+                   total_points = sum(team_final_score),
+                   opp_total_points = sum(opp_team_final_score),
+                   points_diff_g1 = (sum(team_game_one) - sum(opp_game_one)),
+                   points_diff_g2 = (sum(team_game_two) - sum(opp_game_two)),
+                   poitns_diff_g3 = (sum(team_game_three) - sum(opp_game_three)),
+                   avg_g1_diff = mean(score_diff_game_one),
+                   avg_points_set = (total_points / total_sets_played),
+                   avg_g2_diff = mean(score_diff_game_two),
+                   g3_score_sum = sum(score_diff_game_three),
+                   avg_g3_diff = (g3_score_sum / total_set_threes),
+                   points_diff = (total_points - opp_total_points))
+pd <- pd %>%
+  dplyr::filter(total_matches > 10)
+
+#density plots of performance####
+avg_points_set_density <- ggplot(pd, aes(avg_points_set)) + geom_density(fill = 'skyblue') + geom_vline(aes(xintercept = mean(avg_points_set)), linetype= 'dashed')
+match_win_density <- ggplot(pd, aes(match_win)) + geom_density(fill = 'tomato')  + geom_vline(aes(xintercept = mean(match_win)), linetype= 'dashed')
+avg_g1_diff_density <- ggplot(pd, aes(avg_g1_diff)) + geom_density(fill = 'mediumaquamarine')  + geom_vline(aes(xintercept = mean(avg_g1_diff)), linetype= 'dashed')
+avg_g2_diff_density <- ggplot(pd, aes(avg_g2_diff)) + geom_density(fill = 'mediumorchid1')  + geom_vline(aes(xintercept = mean(avg_g2_diff)), linetype= 'dashed')
+grid.arrange(avg_g1_diff_density, avg_g2_diff_density, avg_points_set_density, match_win_density, ncol = 2)
+
+```
+
+- Points difference in game 1 and match won
+
+```{r, echo = FALSE, error=TRUE}
+ggplot(pd) +
+  geom_point(aes(points_diff_g1, match_won)) 
+```
+
+- Matches played per year for mens top 8
+
+```{r, echo = FALSE, error=TRUE}
+top_5_m <- df %>% 
+  dplyr::group_by(year, player) %>%
+  dplyr::filter(team_rank <=8 & gender == 'm') %>%
+  dplyr::summarise(matches_played = sum(matches_played))
+
+test <- top_5_m %>%
+  dplyr::group_by(player) %>%
+  dplyr::filter(matches_played > 20)
+
+ggplot(test, aes(year, matches_played)) + 
+  geom_point(aes(size = matches_played), fill = 'blue', color = 'darkred') + 
+  geom_smooth(method='loess', colour='seashell4', se=FALSE, linetype = 'dashed') +
+  scale_x_continuous(breaks = seq(2001, 2019, by = 1)) +
+  scale_y_continuous(breaks = seq(30, 120, by = 3)) +
+  theme(legend.position="top")
+```
+
+- Point diff and correlation value
+
+```{r, echo = FALSE, error=TRUE}
+a<-df %>%
+  dplyr::group_by(player, team_country, year) %>%
+  dplyr::summarise(match_won = sum(team_match_won),
+            match_lost = sum(matches_played - team_match_won),
+            avg_rank = mean(team_rank),
+            avg_match_time = mean(duration/60),
+            match_win = match_won / (match_won + match_lost),
+            game_3s = sum(game_three_amount),
+            avg_tourn_rank = mean(tourn_rank),
+            total_matches = sum(matches_played),
+            total_points = sum(team_final_score),
+            opp_total_points = sum(opp_team_final_score),
+            points_diff_g1 = (sum(team_game_one) - sum(opp_game_one)),
+            points_diff_g2 = (sum(team_game_two) - sum(opp_game_two)),
+            poitns_diff_g3 = (sum(team_game_three) - sum(opp_game_three)),
+            points_diff = (total_points - opp_total_points))
+
+a <- a[a$match_won > 50,] #I only want players who are giving me more than 50 wins
+
+point_model <- lm(match_won ~ points_diff_g1, data = a)
+coef(point_model)
+
+point_grid <- a %>%
+  data_grid(points_diff_g1) %>%
+  add_predictions(point_model)
+
+a %>%
+  ggplot() +
+  geom_point(aes(points_diff_g1, match_won)) +
+  geom_line(data = point_grid, aes(points_diff_g1, pred), color = "red") +
+  geom_text(aes(250, 50, label = paste0("Correlation Value: ",  round(cor(a$points_diff_g1, a$match_won), 2))), color = "red") +
+  xlab("Point Differential") +
+  ylab("Wins") +
+  ggtitle("Point Differential vs Wins for FIVB Beach 2001-2019") 
+```
+
+- Teams ranked 20 and higher, coorlation of match wins based on average point diff in game 1
+
+```{r, echo = FALSE, error=TRUE}
+op2<-df %>%
+  dplyr::group_by(player, year, team_country) %>%
+  dplyr::filter(opp_team_rank < 20 & team_rank > 21) %>%
+  dplyr::summarise(match_won = sum(team_match_won),
+                   match_lost = sum(matches_played - team_match_won),
+                   avg_rank = mean(team_rank),
+                   avg_match_time = mean(duration/60),
+                   match_win = match_won / (match_won + match_lost),
+                   game_3s = sum(game_three_amount),
+                   avg_tourn_rank = mean(tourn_rank),
+                   total_matches = sum(matches_played),
+                   total_points = sum(team_final_score),
+                   opp_total_points = sum(opp_team_final_score),
+                   points_diff_g1 = (sum(team_game_one) - sum(opp_game_one)),
+                   points_diff_g2 = (sum(team_game_two) - sum(opp_game_two)),
+                   poitns_diff_g3 = (sum(team_game_three) - sum(opp_game_three)),
+                   points_diff = (total_points - opp_total_points),
+                   avg_g1 = (points_diff_g1/total_matches),
+                   avg_g2 = (points_diff_g2/total_matches))
+
+
+op2<-op2[!is.na(op2$team_country),] 
+cols1 <- c("#ff8080", "#66b3ff")
+cols2 <- c("#ff4d4d", "#3399ff")
+ggplot(op2, aes(x = avg_g1)) + 
+  geom_point(aes(y = match_lost, color = "match_lost"), size = 2, alpha = 0.5) + 
+  geom_point(aes(y = match_won, color = "match_won"), size = 2, alpha = 0.5) + 
+  stat_smooth(aes(x = avg_g1, y = match_lost, linetype = "match_lost"), method = "lm", formula = y ~ x, se = F, size = 0.25, color = cols2[1]) + 
+  stat_smooth(aes(x = avg_g1, y = match_won, linetype = "match_won"), method = "lm", formula = y ~ poly(x,2), se = F, size = 0.25, color = cols2[2]) + 
+  scale_color_manual(name = "Relationship", values = c(cols1[1], cols1[2])) + 
+  scale_linetype_manual(name = "Fit Type", values = c(2, 2)) + 
+  ggtitle("Manual Legend for Stat Smooth") 
+
+```
+
+- Tougher tournaments have longer matches
+
+```{r, echo = FALSE, error=TRUE}
+ggplot(df, aes(year,duration)) +
+  scale_y_time(limits = c(1500, 4000))+   
+  geom_point(na.rm = TRUE) + 
+  geom_smooth(na.rm = TRUE) +
+  geom_point(aes(colour = tourn_rank)) 
+```
+
+- Toughest year to play beach volleyball?
+
+```{r, echo = FALSE, error=TRUE}
+ggplot(data = dfs, mapping = aes(x = year, y = tourn_rank)) + 
+  geom_point(na.rm = TRUE) +
+  stat_summary(
+    geom = "point",
+    fun.y = "mean",
+    col = "black",
+    size = 3,
+    shape = 24,
+    fill = "red"
+  ) +
+  geom_smooth(na.rm = TRUE) 
+```
+
+- Which year avg the longest match duration?
+
+```{r, echo = FALSE, error=TRUE}
+ggplot(df, aes(duration/60, year)) + 
+  geom_point(alpha=.5) 
+```
+
+- Men teams ranked 1st played how well?
+
+```{r, echo = FALSE, error=TRUE}
+bp<-df %>%
+  dplyr::group_by(year, player, team) %>%
+  dplyr::filter(team_rank == 1 & gender == 'm') %>%
+  dplyr::summarise(total_matches = sum(matches_played),
+                   total_set_threes = sum(game_three_amount),
+                   total_sets_played = (total_matches + total_matches + total_set_threes),
+                   duration = mean(duration),
+                   match_won = sum(team_match_won),
+                   match_lost = sum(matches_played - team_match_won),
+                   opp_avg_rank = mean(opp_team_rank),
+                   avg_match_time = mean(duration/60),
+                   match_win = match_won / (match_won + match_lost),
+                   avg_tourn_rank = mean(tourn_rank),
+                   avg_g1_diff = mean(score_diff_game_one),
+                   avg_g2_diff = mean(score_diff_game_two),
+                   g3_score_sum = sum(score_diff_game_three),
+                   avg_g3_diff = (g3_score_sum / total_set_threes),
+                   total_points = sum(team_final_score),
+                   opp_total_points = sum(opp_team_final_score),
+                   avg_score_diff = ((total_points) - (opp_total_points)) / total_sets_played)
+#                   avg_score_diff = (avg_g1_diff - avg_g2_diff - avg_g3_diff))
+bp<-bp %>%
+  dplyr::filter(total_matches > 12)
+
+avg_points_set_density <- ggplot(bp, aes(avg_score_diff)) + geom_density(fill = 'skyblue') + geom_vline(aes(xintercept = mean(avg_score_diff)), linetype= 'dashed')
+
+match_win_density <- ggplot(bp, aes(match_win)) + geom_density(fill = 'tomato')  + geom_vline(aes(xintercept = mean(match_win)), linetype= 'dashed')
+
+avg_g1_diff_density <- ggplot(bp, aes(avg_g1_diff)) + geom_density(fill = 'mediumaquamarine')  + geom_vline(aes(xintercept = mean(avg_g1_diff)), linetype= 'dashed')
+
+avg_g2_diff_density <- ggplot(bp, aes(avg_g2_diff)) + geom_density(fill = 'mediumorchid1')  + geom_vline(aes(xintercept = mean(avg_g2_diff)), linetype= 'dashed')
+
+
+grid.arrange(avg_g1_diff_density, avg_g2_diff_density, avg_points_set_density, match_win_density, ncol = 2)
+```
+
+- All first ranked teams score diff
+
+```{r, echo = FALSE, error=TRUE}
+rank<-df %>%
+  dplyr::group_by(player, team, date, tourn, match_no) %>%
+  dplyr::filter(team_rank == 1) %>%
+  dplyr::summarise(total_matches = sum(matches_played),
+                   duration = mean(duration),
+                   match_won = sum(team_match_won),
+                   match_lost = sum(matches_played - team_match_won),
+                   avg_rank = mean(team_rank),
+                   opp_avg_rank = mean(opp_team_rank),
+                   avg_match_time = mean(duration/60),
+                   match_win = match_won / (match_won + match_lost),
+                   avg_tourn_rank = mean(tourn_rank),
+                   total_points = sum(team_final_score),
+                   opp_total_points = sum(opp_team_final_score),
+                   score_diff = (total_points - opp_total_points))
+
+
+ggplot(rank, aes(date, score_diff)) + 
+  geom_point(size=2) +
+  geom_smooth()
+```
+
+- All first place team final points difference
+
+```{r, echo = FALSE, error=TRUE}
+rank<-df %>%
+  dplyr::group_by(team, year) %>%
+  dplyr::filter(team_rank == 1) %>%
+  dplyr::summarise(total_matches = sum(matches_played),
+                   duration = mean(duration),
+                   match_won = sum(team_match_won),
+                   match_lost = sum(matches_played - team_match_won),
+                   avg_rank = mean(team_rank),
+                   opp_avg_rank = mean(opp_team_rank),
+                   avg_match_time = mean(duration/60),
+                   match_win = match_won / (match_won + match_lost),
+                   avg_tourn_rank = mean(tourn_rank),
+                   total_points = sum(team_final_score),
+                   opp_total_points = sum(opp_team_final_score),
+                   score_diff = (total_points - opp_total_points))
+
+rank <- rank %>% dplyr::filter(total_matches > 21)
+
+ggplot(rank, aes(team, score_diff)) +
+geom_bar(stat = "identity", aes(fill = if_else(score_diff < 0, "red", "green")))  +
+coord_flip() +
+  labs(fill = 'Score Diff') +
+xlab("Team") +
+ylab("Point Differential") +
+ggtitle("FIVB First Place Team Point Differentials") 
+```
+
+- Point difference in first place teams
+
+```{r, echo = FALSE, error=TRUE}
+point_model <- lm(match_won ~ score_diff, data = rank)
+coef(point_model)
+
+point_grid <- rank %>%
+  data_grid(score_diff) %>%
+  add_predictions(point_model)
+
+ggplot(rank) +
+  geom_point(aes(score_diff, match_won)) +
+  geom_line(data = point_grid, aes(score_diff, pred), color = "red") +
+  geom_text(aes(200, 100, label = paste0("Correlation Value: ",  round(cor(rank$score_diff, rank$match_won), 2))), color = "red") +
+  xlab("Point Differential") +
+  ylab("Wins") 
+
+rank <- rank %>%
+  add_residuals(point_model)
+
+ggplot(rank, aes(score_diff, resid)) +
+  geom_point() +
+  geom_text(aes(label = if_else(abs(resid) > 1, team, NULL)), hjust = -.1) +
+  xlab("Point Difference") +
+  ylab("Residual") +
+  ggtitle("Residuals for Wins and Point Difference Model") 
+```
+
+- Getting the data put into this 
+```{r}
+all_player_df <- df %>% 
+  dplyr::group_by(player, hour, team, team_country, tourn_rank, tourn, date, phase, year, match_no, court, time, team_rank, gender, opp, opp_team_rank) %>% 
+  dplyr::summarise(total_matches = sum(matches_played),
+                   match_won = sum(team_match_won),
+                   match_lost = sum(matches_played - team_match_won),
+                   match_win = match_won / (match_won + match_lost),
+                   total_set_threes = sum(game_three_amount),
+                   total_sets_played = (total_matches + total_matches + total_set_threes),
+                   rank = sum(team_rank))
+
+all_player_df$total_matches<-suppressWarnings(as.character(all_player_df$total_matches))
+
+all_player_df$total_matches <- str_replace(all_player_df$total_matches, '2', '1') #Each row is one match. When there was a team with the same name twice, widdison/widdison, it would say they played in 2 matches for that team. So I did a quick switch to 1. 
+
+all_player_df$total_matches <- suppressWarnings(as.integer(all_player_df$total_matches))
+
+df_men <- all_player_df %>%
+  dplyr::filter(gender == 'm' & team_rank <= 8)
+
+df_women <- all_player_df %>%
+  dplyr::filter(gender == 'w' & team_rank <= 8)
+```
+
+
+# Machine learning 
+## Decided predictors
+After some time exploring and trying things I have never done (this being my first project) I realized I wanted to keep it a bit simplar with something I would understand. That led me to using court, hour, total matches, match win % and gender as my main variables for my hypothesis.
+## glm
+
+```{r}
+f <- df_men %>%
+  dplyr::group_by(hour, court) %>%
+  dplyr::summarise(total_matches = sum(total_matches),
+                   match_win_perce = sum((match_won) / total_matches))
+
+f <- na.omit(f)
+f <- f %>% dplyr::filter(total_matches >= 29) #I wanted to get a sample size with more than 29 matches
+
+formula <- match_win_perce ~hour + court 
+
+
+mhlm <- glm(formula, data=f)
+
+prob <- predict(mhlm, newdata=f, type="response")
+prob <- round(prob,3)
+f$prob <- prob
+
+
+f %>%
+  ggplot(aes(court, hour)) +
+  geom_point(aes(color = prob), size = 7, alpha = 0.5) + 
+  scale_size(range = c(.5, 9)) +
+  scale_y_continuous(breaks = seq(8, 22, by = 1)) +
+  labs(title = 'FIVB top 8 team probability of winning by court and hour',
+       subtitle = 'Data from 2009 - 2019',
+       size = 'Probability%',
+       color ='Probability',
+       x = 'Court',
+       y = 'Hour')+
+  scale_color_viridis(option="C")+
+  scale_x_continuous(breaks = 1:6) 
+
+f$prob<-format(round(f$prob,3))
+f$match_win_perce <- NULL
+f$total_matches <- NULL
+
+f<-f[order(-prob),]
+colnames(f) <- c('Hour', 'Court', 'Probablity')
+kable(f) %>%
+  kable_styling(bootstrap_options = "striped", full_width = F, position = 'left', fixed_thead = T) %>%
+  scroll_box(width = '200px', height='500px')
+```
+## *Conclusion*
+# There is an apparent trend of teams in the top 8 winning more and having higher probility of winning on lower courts earlier in the day. And lower probility later in the day on higher courts. This trend is likely due to teams in the top 8 advancing further into tournaments and playing other teams in the top 8. 

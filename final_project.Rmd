@@ -1,0 +1,556 @@
+---
+title: '**FIVB Beach Volleyball Historic Top 8 Teams Analysis**'
+output:
+  html_notebook: null
+  word_document: default
+  html_document:
+    df_print: paged
+  theme: united
+  toc: no
+  pdf_document: default
+---
+### **Tyler Widdison**
+
+  *Evaluation of winning trends related to court and hour for the top 8 FIVB Beach volleyball teams per gender since 2001. The concluding hypothesis is that teams ranked within the top 8 have a higher probability at winning on court 1 at 09:00. Generalized linear model is used in support of the hypothesis. Notes: __^Court records are not kept by FIVB until 2009. ^^Hour records are not kept by FIVB until 2004__*
+
+```{r, include = FALSE}
+library(tidyverse)
+library(gridExtra)
+library(tidyr)
+library(ggthemes)
+library(viridis)
+library(dplyr)
+library(knitr)
+library(kableExtra)
+library(ggplot2)
+library(tidyquant)
+library(gridExtra)
+library(grid)
+library(lubridate)
+library(sm)
+library(GGally)
+library(stringr)
+library(binhf)
+library(reshape2)
+library(dataMeta)
+dfs <- read.csv('C:/Users/Tyler.Widdison/Documents/all_the_things.csv', header = TRUE, as.is=TRUE,  encoding="UTF-8")
+names(dfs)[1] <- 'match_no' #changing the column 1 name
+dfs<-dfs[!(dfs$tourn == 'wgoo2001'),] #this tournament is in there under the name 'wbri2001' so I am deleting all of the 'wgoo2001' occurances
+dfs$match_no <- suppressWarnings(as.numeric(dfs$match_no)) #needs to be a numeric
+dfs$date <- suppressWarnings(as.Date(dfs$date)) #needs to be a date
+dfs$court <- suppressWarnings(as.numeric(dfs$court)) #change to numeric
+dfs$result <- NULL #getting rid of result. Score is later down the line
+dfs$team_rank <- as.numeric(dfs$team_rank) #needs to be a numeric
+dfs$opp_team_rank <- as.numeric(dfs$opp_team_rank) #needs to be a numeric
+dfs$duration<-suppressWarnings(as.duration(hms(dfs$duration))) #putting duration into a useable format using lubridate
+dfs$duration<-suppressWarnings(as.vector(dfs$duration)) #making the class an integer
+dfs$opp_game_three[is.na(dfs$opp_game_three)] <- 0 #ignoring NAs in game three
+dfs$team_game_three[is.na(dfs$team_game_three)] <- 0 #...
+dfs$tourn_rank[is.na(dfs$tourn_rank)] <- 239 #This NA is only one tournament. I gave it a score of 239 based off teams rankings. 
+dfs$score_diff_game_one <-(dfs$team_game_one - dfs$opp_game_one)#score difference for all sets
+dfs$score_diff_game_two <-(dfs$team_game_two - dfs$opp_game_two)
+dfs$score_diff_game_three <-(dfs$team_game_three - dfs$opp_game_three)
+dfs$team_final_score <- (dfs$team_game_one + dfs$team_game_two + dfs$team_game_three) #number of total points scored
+dfs$opp_team_final_score <- (dfs$opp_game_one + dfs$opp_game_two + dfs$opp_game_three) #number of total opponent points scored
+dfs$team <- str_replace(dfs$team, 'humana-paredes/pavan', 'humana/paredes-pavan') #needing some name changes so things match up properly
+dfs$team <- str_replace(dfs$team, 'melissa/pavan', 'humana/paredes-pavan')
+dfs$team <- str_replace(dfs$team, 'michon/szczytowicz-kolosinska', 'kolosinska/michon-szczytowicz')
+dfs$time <- str_replace(dfs$time, '01:00', '13:00')  #some of the times need adjusting (i checked schedule to make sure this is the case)
+dfs$time <- str_replace(dfs$time, '02:00', '14:00')  
+dfs$time <- str_replace(dfs$time, '04:00', '16:00')  
+dfs$time <- str_replace(dfs$time, '04:57', '16:57')  
+
+#melting the data so I can get both players in a unique setting. Players, at times, will play with different partners throughout one year. Looking at one team wouldn't work for the way I wanted this
+df <- melt(dfs, id.vars=c('match_no', 'date', 'time', 'court', 'duration', 'tourn', 'year', 'phase', 'tourn_rank', 'winning_team', 'losing_team', 'gender', 'team', 
+                          'team_country', 'team_rank', 'team_match_score', 'team_game_one', 'team_game_two', 'team_game_three', 'opp', 'opp_country', 'opp_match_score', 
+                          'opp_game_one', 'opp_game_two', 'opp_game_three', 'opp_team_rank', 'matches_played', 'team_match_won', 'opp_match_won', 'opp_player_1', 
+                          'opp_player_2', 'score_diff_game_one', 'score_diff_game_two', 'score_diff_game_three', 'team_final_score', 'opp_team_final_score'))
+colnames(df)[which(names(df) == "value")] <- "player" #column changing the melt
+df$player <- str_replace(df$player, 'thole j.', 'thole, j.') #more name changes are needing to happen due to data quality needing to be updated
+df$player <- str_replace(df$player, 'ces a.', 'cès')
+df$player <- str_replace(df$player, 'mol, a.', 'mol a.')
+
+df$team_rank[df$team_rank == 0] <- 150 #Due to time, I only ensured teams 1-50 had a correct ranking. I am giving all other teams with 0 a 150 ranking. 
+df$opp_team_rank[df$opp_team_rank == 0] <- 150
+df<-df[!is.na(df$team_game_one),] #there are matches with injurys. this throws errors. So I am taking out those injury matches
+df$game_three_amount<-lapply(df$team_game_three, function(x){ length(which(x!=0))/length(x)}) #counting the number of set 3s played
+df$game_three_amount<-suppressWarnings(as.numeric(df$game_three_amount)) #setting the class as numeric
+
+df$phase2 <- ifelse(grepl("Country", df$phase), 'CQ', #phase of the match is not consistent. For example 'Country Quota BRA' ect ect. I want all Country Quota matches played to say CQ
+                    ifelse(grepl("Federation", df$phase), 'CQ',
+                           ifelse(grepl("Semi", df$phase), 'Semifinals',
+                                  ifelse(grepl("Play-Off", df$phase), 'Playoff',
+                                         ifelse(grepl("Gold Medal Match", df$phase), 'Playoff',
+                                                ifelse(grepl("Finals", df$phase), 'Final 1st Place',
+                                                  ifelse(grepl("Bronze", df$phase), 'Final 1st Place',NA)))))))
+
+df$phase2 <- ifelse(is.na(df$phase2), df$phase, df$phase2) #grouping the phases together so I can get one phase
+df$phase <- NULL #I don't want to confuse myself. Nulling out the first phase. 
+df<-df %>% rename(phase = phase2)
+df$hour <- substring(df$time, 0, 2) #I only want to see hour of each day. Not the Minutes
+df$hour<-suppressWarnings(as.integer(df$hour))
+
+all_player_df <- df %>% 
+  dplyr::group_by(player, hour, team, team_country, tourn_rank, tourn, date, phase, year, match_no, court, time, team_rank, gender, opp, opp_team_rank) %>% 
+  dplyr::summarise(total_matches = sum(matches_played),
+                   match_won = sum(team_match_won),
+                   match_lost = sum(matches_played - team_match_won),
+                   match_win = match_won / (match_won + match_lost),
+                   total_set_threes = sum(game_three_amount),
+                   total_sets_played = (total_matches + total_matches + total_set_threes),
+                   rank = sum(team_rank))
+
+all_player_df$total_matches<-suppressWarnings(as.character(all_player_df$total_matches))
+
+all_player_df$total_matches <- str_replace(all_player_df$total_matches, '2', '1')
+
+all_player_df$total_matches <- suppressWarnings(as.integer(all_player_df$total_matches))
+
+df_men <- all_player_df %>%
+  dplyr::filter(gender == 'm' & team_rank <= 8)
+
+df_women <- all_player_df %>%
+  dplyr::filter(gender == 'w' & team_rank <= 8)
+```
+
+
+# Mean of matches played and won from the top 8 teams considering 2001 - 2019.
+
+### **Men**
+#### There has been a downward trend of top 8 mens teams playing matches per year with 2017 being the lowest. Avg matches played for mens top 8 in a FIVB season is 57.59 and wins is 41.04 from 2001 - 2019. 
+```{r, echo = FALSE, error=TRUE}
+t <- df_men %>%
+  dplyr::group_by(player, year) %>%
+  dplyr::summarise(total_matches = sum(total_matches),
+                   total_wins = sum(match_won))
+t2.1 <- t %>%
+  dplyr::filter(total_matches > 29)
+
+t2.12<-melt(t2.1, id.vars = c('year', 'player'))
+t2.12$player <- NULL
+
+#plot1#
+ggplot(data=t2.12, aes(x=value, group=variable, fill=variable)) +
+  geom_density(adjust=1.5, alpha = 0.6) + 
+  geom_vline(xintercept = 57.59, linetype = 'dotted', size = 1.5, color = '#9c5959') +
+  geom_vline(xintercept = 41.04, linetype = 'dotted', size = 1.5, color = '#50948a') + 
+  labs(title = 'Density of mens matches played and won 2001-2019',
+       y = 'Density',
+       x = 'Matches')
+
+t3<-t %>%
+  dplyr::group_by(year) %>%
+  dplyr::filter(total_matches > 29) %>%
+  dplyr::summarise(total_matches = sum(total_matches),
+                   total_wins = sum(total_wins))
+
+#plot2#
+ggplot(t3)+
+  geom_line(aes(year, total_matches)) + 
+  geom_point(aes(x = year, y = total_matches, color = 'red'), size = 3.5, alpha = 0.5) + 
+  geom_smooth(aes(x = year, y = total_matches),color = 'red', se = F) +
+  geom_line(aes(year, total_wins)) + 
+  geom_point(aes(x = year, y = total_wins, color = 'blue'), size = 3.5, alpha = 0.5)+
+  geom_smooth(aes(x = year, y = total_wins), se = F) +
+  labs(title = 'Matches played & won', color = '', x = 'Year' , y= 'Matches')+
+  scale_color_manual(labels = c("Matches won", "Matches played"), values = c("blue", "red")) +
+  scale_x_continuous(breaks = seq(2001, 2019, by = 1)) + 
+  scale_y_continuous(breaks = seq(450, 1250, by = 50)) +
+  theme_tq() 
+
+```
+
+
+
+
+### **Women**
+#### There has been a slight downward trend of top 8 womens teams playing matches per year with the lowest being 2004. The avg matches played for womens top 8 in a FIVB season is 59.8 and matches won 43.54 from 2001 - 2019.
+```{r, echo = FALSE, error=TRUE}
+d <- df_women %>%
+  dplyr::group_by(player, year) %>%
+  dplyr::summarise(total_matches = sum(total_matches),
+                   total_wins = sum(match_won))
+d2 <- d %>%
+  dplyr::filter(total_matches > 29)
+
+
+d2<-melt(d2, id.vars = c('year', 'player'))
+d2$player <- NULL
+
+
+
+#plot1#
+ggplot(data=d2, aes(x=value, group=variable, fill=variable)) +
+  geom_density(adjust=1.5, alpha = 0.6) + 
+  geom_vline(xintercept = 59.8, linetype = 'dotted', size = 1.5, color = '#9c5959') +
+  geom_vline(xintercept = 43.54, linetype = 'dotted', size = 1.5, color = '#50948a') +
+  labs(title = 'Density of womens matches played and won 2001-2019',
+       y = 'Density',
+       x = 'Matches')
+
+d3<-d %>%
+  dplyr::group_by(year) %>%
+  dplyr::filter(total_matches > 29) %>%
+  dplyr::summarise(total_matches = sum(total_matches),
+                   total_wins = sum(total_wins))
+
+#plot2#
+ggplot(d3)+
+  geom_line(aes(year, total_matches)) + 
+  geom_point(aes(x = year, y = total_matches, color = 'red'), size = 3.5, alpha = 0.5) + 
+  geom_smooth(aes(x = year, y = total_matches),color = 'red', se = F) +
+  geom_line(aes(year, total_wins)) + 
+  geom_point(aes(x = year, y = total_wins, color = 'blue'), size = 3.5, alpha = 0.5)+
+  geom_smooth(aes(x = year, y = total_wins), se = F) +
+  labs(title = 'Matches played & won', color = '', x = 'Year' , y= 'Matches')+
+  scale_color_manual(labels = c("Matches won", "Matches played"), values = c("blue", "red")) +
+  scale_x_continuous(breaks = seq(2001, 2019, by = 1)) + 
+  scale_y_continuous(breaks = seq(420, 1250, by = 50)) +
+  theme_tq() 
+
+
+```
+
+
+# Courts match's were played by a team in the top 8.
+### **Men**
+#### Matches played and matches won per court 2009 - 2019. Top 8 teams have the highest winning percentage on court 5 and 3. Court 1 has the lowest winning percentage. 
+```{r, echo = FALSE, error=TRUE}
+c <- df_men %>%
+  dplyr::group_by(court, year) %>%
+  dplyr::summarise(total_matches = sum(total_matches),
+                   total_win = sum(match_win),
+                   match_lost = sum(match_lost),
+                   match_win_perce = total_win /total_matches )
+
+c <- na.omit(c)
+
+c <- c%>% dplyr::filter(total_matches >= 30)
+
+ggplot(c, aes(x = year, y = total_matches, colour = factor(court))) +
+  geom_point(size = 2) + 
+  geom_line(alpha = 0.7) +
+  labs(x = 'Year', 
+       y = 'Matches',
+       colour = 'Court',
+       title = 'Top 8 mens matches per court per year') + 
+  scale_x_continuous(breaks = 2009:2019) + 
+  scale_y_continuous(breaks = seq(0, 450, by = 25))
+
+c2<-c %>% 
+  dplyr::group_by(court) %>% 
+  dplyr::summarise(total_matches = sum(total_matches),
+                   total_win = sum(total_win),
+                   match_win_perce = total_win / total_matches)
+
+
+ggplot(c2, aes(court, total_matches)) + 
+  geom_col(aes(court, total_matches), color = 'green', fill = 'lightgreen') +
+  geom_text(aes(label = formattable::percent(match_win_perce)), nudge_y = 145, alpha = 0.5) + 
+  geom_text(aes(label = total_matches),nudge_y = -145, alpha = 0.5) + 
+  scale_x_continuous(breaks = 1:6) + 
+  labs(title = 'Win % and matches played per court',
+       x = 'Court',
+       y = 'Matches')
+
+```
+
+
+### **Women**
+#### Matches played on court by womens top 8 teams 2009 - 2019. Top 8 teams have the highest winning percentage on court 5, 3 and 4. Court 1 has the lowest winning percentage. 
+```{r, echo = FALSE, error=TRUE}
+k <- df_women %>%
+  dplyr::group_by(court, year) %>%
+  dplyr::summarise(total_matches = sum(total_matches),
+                   total_win = sum(match_win),
+                   match_lost = sum(match_lost),
+                   match_win_perce = total_win /total_matches )
+
+k <- na.omit(k)
+
+k <- k%>% dplyr::filter(total_matches >= 30)
+
+ggplot(k, aes(x = year, y = total_matches, colour = factor(court))) +
+  geom_point() + 
+  geom_line() +
+  labs(x = 'Year', 
+       y = 'Matches',
+       colour = 'Court',
+       title = 'Top 8 womens matches per court per year') + 
+  scale_x_continuous(breaks = 2009:2019) + 
+  scale_y_continuous(breaks = seq(0, 450, by = 25))
+
+k2<-k %>% 
+  dplyr::group_by(court) %>% 
+  dplyr::summarise(total_matches = sum(total_matches),
+                   total_win = sum(total_win),
+                   match_win_perce = total_win / total_matches)
+
+
+ggplot(k2, aes(court, total_matches)) + 
+  geom_col(aes(court, total_matches), color = 'green', fill = 'lightgreen') +
+  geom_text(aes(label = formattable::percent(match_win_perce)), nudge_y = 145, alpha = 0.5) + 
+  geom_text(aes(label = total_matches),nudge_y = -145, alpha = 0.5) + 
+  scale_x_continuous(breaks = 1:6) +
+  labs(title = 'Win % and matches played per court',
+     x = 'Court',
+     y = 'Matches')
+
+```
+
+# Hour of day match's were played by a team in the top 8.
+### **Men**
+#### Matches played by hour by mens teams in top 8 from 2004-2019. The lowest winning percentage by a team in the top 8 is 21:00. And the highest is at 08:00.
+```{r, echo = FALSE, error=TRUE}
+h <- df_men %>%
+  dplyr::group_by(hour) %>%
+  dplyr::summarise(total_matches = sum(total_matches),
+                   total_win = sum(match_win),
+                   match_lost = sum(match_lost),
+                   match_win_perce = total_win /total_matches )
+
+h <- na.omit(h)
+
+h <-h%>% dplyr::filter(total_matches >= 31)
+
+ggplot(h, aes(hour, total_matches)) + 
+  geom_col(aes(hour, total_matches), color = 'green', fill = 'lightgreen') +
+  geom_text(aes(label = formattable::percent(match_win_perce)), nudge_y = 145, alpha = 0.5) + 
+  geom_text(aes(label = total_matches),nudge_y = -145, alpha = 0.5) + 
+  scale_x_continuous(breaks = 8:22) + 
+  theme_tq() +
+  labs(title = 'Win % and matches played per hour',
+     x = 'Hour',
+     y = 'Matches')
+```
+
+### **Women**
+#### Matches played by hour by womens teams in top 8 from 2009-2019. The lowest winning percentage by a team in the top 8 is 22:00. And the highest is at 08:00.
+```{r, echo = FALSE, error=TRUE}
+a <- df_women %>%
+  dplyr::group_by(hour) %>%
+  dplyr::summarise(total_matches = sum(total_matches),
+                   total_win = sum(match_win),
+                   match_lost = sum(match_lost),
+                   match_win_perce = total_win /total_matches )
+
+a <- na.omit(a)
+  
+a <-a%>% dplyr::filter(total_matches >= 31)
+
+ggplot(a, aes(hour, total_matches)) + 
+  geom_col(aes(hour, total_matches), color = 'green', fill = 'lightgreen') +
+  geom_text(aes(label = formattable::percent(match_win_perce)), nudge_y = 145, alpha = 0.5) + 
+  geom_text(aes(label = total_matches),nudge_y = -145, alpha = 0.5) + 
+  scale_x_continuous(breaks = 8:22) + 
+  theme_tq() +
+  labs(title = 'Win % and matches played per hour',
+     x = 'Hour',
+     y = 'Matches')
+```
+
+
+# Match win % per hour and court trend by mens teams in top 8 from 2009-2019.
+### **Men**
+#### This data only takes into account when the court and time were present. The highest winning % is court 5 at 12:00. The lowest winning % is court 1 at 20:00.
+```{r, echo = FALSE, error=TRUE}
+d <- df_men %>%
+  dplyr::group_by(hour, court) %>%
+  dplyr::summarise(total_matches = sum(total_matches),
+                   win_percent = sum(match_won) / total_matches)
+d <- na.omit(d, echo=FALSE)
+  
+d <-d%>% dplyr::filter(total_matches >= 29)
+
+d$total_matches <- NULL
+d2<-melt(d, id.vars = c('court', 'hour'))
+
+#ggplot(d, aes(hour, win_percent, size = court, fill = factor(court))) + 
+#  geom_point(alpha = 0.5, color = 'black', shape = 22, size = 8) + 
+#  scale_size(range = c(3, 8), name = 'court', guide = F)  +
+#  scale_x_continuous(breaks = 08:22) + 
+#  scale_y_reverse(labels = scales::percent) +
+#  guides(fill = guide_legend(override.aes = list(size=10))) + 
+#  scale_fill_discrete('Court') + 
+#  labs(title = 'Win % according to court and hour',
+#       y= 'Win %',
+#       x = 'Hour')
+
+ggplot(d2, aes(x = hour, y = value, colour = factor(court))) +
+  geom_point(size = 2, alpha = 0.8) + 
+  geom_line(size = 1, alpha = 0.5) +
+  labs(x = 'Hour', 
+       y = 'Win%',
+       colour = 'Court',
+       title = 'Top 8 mens win% per court per hour') + 
+  scale_x_continuous(breaks = 08:22) + 
+  scale_y_continuous(labels = scales::percent)
+
+```
+
+### **Women**
+#### This data only takes into account when the court and time were present. The highest winning % is court 5 at 09:00 and 12:00. The lowest winning % is court 1 at 20:00.
+```{r, echo = FALSE, error=TRUE}
+da <- df_women %>%
+  dplyr::group_by(hour, court) %>%
+  dplyr::summarise(total_matches = sum(total_matches),
+                   win_percent = sum(match_won) / total_matches)
+
+da <- na.omit(da)
+  
+da <- da%>% dplyr::filter(total_matches >= 29)
+
+da$total_matches <- NULL
+da2<-melt(da, id.vars = c('court', 'hour'))
+
+#ggplot(da, aes(hour, win_percent, size = court, fill = factor(court))) + 
+#  geom_line(alpha = 0.5) + 
+#  scale_size(range = c(3, 8), name = 'court', guide = F)  +
+#  scale_x_continuous(breaks = 08:22) + 
+#  scale_y_reverse(labels = scales::percent) +
+#  guides(fill = guide_legend(override.aes = list(size=10))) + 
+#  scale_fill_discrete('Court') + 
+#  labs(title = 'Win % according to court and hour',
+#       y= 'Win %',
+#       x = 'Hour')
+
+ggplot(da2, aes(x = hour, y = value, colour = factor(court))) +
+  geom_point(size = 2, alpha = 0.8) + 
+  geom_line(size = 1, alpha = 0.5) +
+  labs(x = 'Hour', 
+       y = 'Win%',
+       colour = 'Court',
+       title = 'Top 8 mens win% per court per hour') + 
+  scale_x_continuous(breaks = 08:22) + 
+  scale_y_continuous(labels = scales::percent)
+
+```
+
+
+
+# Probability of winning by court and hour using Generalized linear regression.
+### **Men**
+#### The highest probability for a men's team to win in the top 8 is court 5 at 11:00. With the loweset being at 21:00 on court 1.
+
+
+```{r, echo = FALSE, error=TRUE}
+f <- df_men %>%
+  dplyr::group_by(hour, court) %>%
+  dplyr::summarise(total_matches = sum(total_matches),
+                   match_win_perce = sum((match_won) / total_matches))
+
+f <- na.omit(f)
+f <- f %>% dplyr::filter(total_matches >= 29)
+
+formula <- match_win_perce ~hour + court
+
+mhlm <- glm(formula, data=f)
+prob <- predict(mhlm, newdata=f, type="response")
+prob <- round(prob,3)
+f$prob <- prob
+
+
+#f %>%
+#  arrange(desc(prob)) %>%
+#  mutate(court = factor(court, court)) %>%
+#  ggplot(aes(x=prob, y=match_win_perce, size=total_matches, color=court)) +
+#  geom_point(alpha=0.5) +
+#  scale_size(range = c(.1, 15)) + 
+#  scale_y_reverse()
+
+
+
+f %>%
+  ggplot(aes(court, hour)) +
+  geom_point(aes(color = prob), size = 7, alpha = 0.5) + 
+  scale_size(range = c(.5, 9)) +
+  scale_y_continuous(breaks = seq(8, 22, by = 1)) +
+  labs(title = 'FIVB top 8 team probability of winning by court and hour',
+       subtitle = 'Data from 2009 - 2019',
+       size = 'Porbability',
+       color ='Probability',
+       x = 'Court',
+       y = 'Hour')+
+  scale_color_viridis(option="C")+
+  scale_x_continuous(breaks = 1:6) 
+
+f$prob<-format(round(f$prob,3))
+f$match_win_perce <- NULL
+f$total_matches <- NULL
+
+f<-f[order(-prob),]
+colnames(f) <- c('Hour', 'Court', 'Probablity')
+kable(f) %>%
+  kable_styling(bootstrap_options = "striped", full_width = F, position = 'left', fixed_thead = T) %>%
+  scroll_box(width = '200px', height='500px')
+
+#kable(ft) %>%
+#  kable_styling(bootstrap_options = "striped", full_width = F, position = 'center', fixed_thead = T)
+#$qqnorm(f$prob, pch = 1, frame = FALSE)
+#$qqline(f$prob, col = "steelblue", lwd = 2)
+
+
+```
+
+
+
+### **Women**
+#### The highest probability for a men's team to win in the top 8 is court 5 at 09:00. With the loweset being at 21:00 on court 1.
+```{r, echo = FALSE, error=TRUE}
+f2 <- df_women %>%
+  dplyr::group_by(hour, court) %>%
+  dplyr::summarise(total_matches = sum(total_matches),
+                   match_win_perce = sum((match_won) / total_matches))
+
+f2 <- na.omit(f2)
+f2 <- f2 %>% dplyr::filter(total_matches >= 29)
+
+formula <- match_win_perce ~hour + court
+
+mhlm2 <- glm(formula, data=f2)
+prob2 <- predict(mhlm2, newdata=f2, type="response")
+prob2 <- round(prob2,3)
+f2$prob2 <- prob2
+
+
+#f2 %>%
+#  arrange(desc(prob2)) %>%
+#  mutate(court = factor(court, court)) %>%
+#  ggplot(aes(x=prob2, y=match_win_perce, size=total_matches, color=court)) +
+#  geom_point(alpha=0.5) +
+#  scale_size(range = c(.1, 15)) + 
+#  scale_y_reverse()
+
+
+
+f2 %>%
+  ggplot(aes(court, hour)) +
+  geom_point(aes(color = prob2), size = 7, alpha = 0.5) + 
+  scale_size(range = c(.5, 9)) +
+  scale_y_continuous(breaks = seq(8, 22, by = 1)) +
+  labs(title = 'FIVB top 8 team probability of winning by court and hour',
+       subtitle = 'Data from 2009 - 2019',
+       size = 'Probability%',
+       color ='Probability',
+       x = 'Court',
+       y = 'Hour')+
+  scale_color_viridis(option="C")+
+  scale_x_continuous(breaks = 1:6) 
+
+f2$prob2<-format(round(f2$prob2,3))
+f2$match_win_perce <- NULL
+f2$total_matches <- NULL
+
+f2<-f2[order(-prob2),]
+colnames(f2) <- c('Hour', 'Court', 'Probablity')
+kable(f2) %>%
+  kable_styling(bootstrap_options = "striped", full_width = F, position = 'left', fixed_thead = T) %>%
+  scroll_box(width = '200px', height='500px')
+
+#qqnorm(f2$prob2, pch = 1, frame = FALSE)
+#qqline(f2$prob2, col = "steelblue", lwd = 2)
+
+```
+
+### *Conclusion*
+#### There is an apparent trend of teams in the top 8 winning more and having higher probility of winning on lower courts earlier in the day. And lower probility later in the day on higher courts. This trend is likely due to teams in the top 8 advancing further into tournaments and playing other teams in the top 8. 
