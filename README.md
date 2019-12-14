@@ -27,13 +27,9 @@ Originally I was going to use BigTimeStats [dataset](https://github.com/BigTimeS
 |DS_Report.pdf|Report about code|
 
 ### Tools
-- R for data science means
+- R for final code and reports
 - Python for web scrapping
 - Excel/Google sheets for manual doctor edits
-
-### Future works
-- Adding additional columns of height, weight, birthdate, fivb player number, and appending .dvw scouted matches data.
-- Shiny apps for quick comparisons of players, teams, or countries
 
 ## Author
 Tyler Widdison
