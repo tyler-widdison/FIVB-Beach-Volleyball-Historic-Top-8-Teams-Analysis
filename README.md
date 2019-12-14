@@ -22,8 +22,7 @@ Originally I was going to use BigTimeStats [dataset](https://github.com/BigTimeS
  
 |File|Description|
 |-|-|
-|finishes_main.csv|CSV file from webscrape of rankings|
-|fivb_2001_to_2019_early_nov_results.csv|CSV file from webscrape of scheudle/results|
+|final_df.csv|CSV file from webscrape of scheudle/results|
 |Report.pdf|Report about findings|
 |DS_Report.pdf|Report about code|
 
