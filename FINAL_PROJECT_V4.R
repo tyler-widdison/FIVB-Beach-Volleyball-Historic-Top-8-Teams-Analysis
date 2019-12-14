@@ -32,87 +32,6 @@ dfs <- read.csv('C:/Users/Tyler.Widdison/Documents/all_the_things.csv', header =
 #2. Use the data repository to get a definition of all the variables in the data set. ####
 #   Perform feature engineering to select variables that support your hypothesis.
 #Data Dict Building
-var_desc <-c('The match number according to FIVB schedule', 
-             'Date match was played on', 
-             'Time the match began', 
-             'Court match was played on',
-             'Duration of the match', 
-             'Tournament name', 
-             'The year the match was played',
-             'Phase of the match. Pool play, Country Quota, Finals, Round 1, Round 2 ect...', 
-             'Rank of the tournament. Taken from teams rankings and averaged for the highes 32 teams.', 
-             'The team which won the match',
-             'Team that lost the match',
-             'Gender of teams playing', 
-             'Focused team',
-             'Focused team country', 
-             'Focused team rank of that specific year on Oct 1', 
-             'How many sets the focused team won', 
-             'Focused points scored for set one', 
-             'Focuseds points scored for set two', 
-             'Focuseds points scored for set three',
-             'Opponent team',
-             'Opponent team country', 
-             'How many sets the opponents team won',
-             'Opponent points scored for set one', 
-             'Opponents points scored for set two', 
-             'Opponents points scored for set three',
-             'Opponent team rank of that specific year on Oct 1', 
-             'Used to sum number of matches played',
-             'If Focused team won the match will be a 1. If lost will be a 0', 
-             'If opponent won the match will be a 1. If lost will be a 0', 
-             'Focused team first player', 
-             'Focused team second player', 
-             'Opponents first player', 
-             'Opponents second player', 
-             'Score difference of both teams set one',
-             'Score difference of both teams set two', 
-             'Score difference of both teams set three', 
-             'Focused team final score from all sets', 
-             'Opponents final score from all sets' ) 
-var_type<-c( 0,
- 0,
- 0,
- 0,
- 0,
- 0,
- 0,
- 0,
- 0,
- 0,
- 0,
- 0,
- 0,
- 0,
- 0,
- 0,
- 0,
- 0,
- 0,
- 0,
- 0,
- 0,
- 0,
- 0,
- 0,
- 0,
- 0,
- 0,
- 0,
- 0,
- 0,
- 0,
- 0,
- 0,
- 0,
- 0,
- 0,
- 0)
-
-linker <- build_linker(dfs, variable_description = var_desc, variable_type = var_type)
-dict <- build_dict(my.data = dfs, linker = linker, option_description = NULL, 
-                   prompt_varopts = FALSE)
-
 #Variables selected for my hypothesis will be:
 #hour, court, total_matches, match_won, match_lost, player, team_country, tourn, date, phase, year, match_no, time, gender
 dict
@@ -154,7 +73,7 @@ df <- melt(dfs, id.vars=c('match_no', 'date', 'time', 'court', 'duration', 'tour
                           'opp_player_2', 'score_diff_game_one', 'score_diff_game_two', 'score_diff_game_three', 'team_final_score', 'opp_team_final_score'))
 colnames(df)[which(names(df) == "value")] <- "player" #column changing the melt
 df$player <- str_replace(df$player, 'thole j.', 'thole, j.') #more name changes are needing to happen due to data quality needing to be updated
-df$player <- str_replace(df$player, 'ces a.', 'cès')
+df$player <- str_replace(df$player, 'ces a.', 'cÃ¨s')
 df$player <- str_replace(df$player, 'mol, a.', 'mol a.')
 
 df$team_rank[df$team_rank == 0] <- 150 #Due to time, I only ensured teams 1-50 had a correct ranking. I am giving all other teams with 0 a 150 ranking. 
