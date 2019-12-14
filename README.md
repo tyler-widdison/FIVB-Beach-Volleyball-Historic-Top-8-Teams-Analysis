@@ -12,7 +12,7 @@ The schedule data was web scrapped from 753 tournament web pages from [old fivb]
 
 The end of year ranking was taken on Oct 1 at the end of each year from 2001 - 2019 using [FIVB ranking pages](http://www.fivb.org/Vis/Public/JS/Beach/SeasonRank.aspx?Gender=1&id=BTechPlayW&Date=20191001).
 
-Originally I was going to use @BigTimeStats [dataset](https://github.com/BigTimeStats/beach-volleyball/tree/master/data), however after investigating naming convetions for players I found it difficult to add a end of the year ranking column matching player names. In the end I had to doctor the naming convention in order to match correct ranking and schedule player names. The final dataset looked like this (each row representing one match):
+Originally I was going to use BigTimeStats [dataset](https://github.com/BigTimeStats/beach-volleyball/tree/master/data), however after investigating naming convetions for players I found it difficult to add a end of the year ranking column matching player names. In the end I had to doctor the naming convention in order to match correct ranking and schedule player names. The final dataset looked like this (each row representing one match):
 
 |no|date|time|court|result|duration|tourn|year|phase|team_a|team_a_country|team_b|team_b_country|winning_country|team_a_rank|player_1_team_a|player_2_team_a|team_b_rank|player_1_team_b|player_2_team_b|gender|team_a_sets_won|team_b_sets_won|team_a_game_one_points|team_b_game_one_points|team_a_game_two_points|team_b_game_two_points|team_a_game_three_points|team_b_game_three_points|tourn_rank
 |-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|
