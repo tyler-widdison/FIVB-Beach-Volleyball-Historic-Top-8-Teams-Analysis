@@ -26,6 +26,7 @@ Originally, I was going to use BigTimeStats [dataset](https://github.com/BigTime
 |final_df.csv|Finalalized CSV file from webscrape of scheudle/results|
 |Report.pdf|Report about hypothesis|
 |Tech_Report.pdf|Report about code and EDA|
+|Ranking_scrape.py|The scrape code I used to pull the FIVB Beach rankings|
 
 ### Tools
 - R for final code and reports
