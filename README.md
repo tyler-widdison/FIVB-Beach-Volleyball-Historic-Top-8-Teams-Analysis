@@ -15,7 +15,7 @@ The end of year ranking was taken on Oct. 1 at the end of each year from 2001 - 
 Originally, I was going to use BigTimeStats [dataset](https://github.com/BigTimeStats/beach-volleyball/tree/master/data), however after investigating naming conventions, I found it difficult to add an end of the year ranking column matching player names. In the end I had to doctor the naming convention in order to match correct ranking and schedule player names. Below is an example of one row of the final dataset:
 
 player|hour|team|team_country|tourn_rank|tourn|date|phase|year|match_no|court|time|team_rank|gender|opp|opp_team_rank|total_matches|match_won|match_lost|match_win|total_set_threes|total_sets_played|rank
-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|
+|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-
 a-kim jihee"|16|"a-kim jihee/choi dan"|"KOR"|149.47|"w13avckr"|2013-07-04|"Pool A"|2013|17|1|"16:10"|150|"w"|"cavestro/tonon"|260|1|0|1|0|0|2|150
 
  ## Contents
